@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation"
 import useSWR from "swr"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { BookOpen, MessageSquare, FileText, Users, Clock } from "lucide-react"
+import { BookOpen, MessageSquare, FileText, Users, Clock, Download, Calendar, Bookmark } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
@@ -38,7 +39,7 @@ export function StudentCourses() {
     { icon: BookOpen, label: "My Courses", href: "/student/courses" },
     { icon: MessageSquare, label: "Discussion Forums", href: "/student/forums" },
     { icon: FileText, label: "Resources", href: "/student/resources" },
-    { icon: BookOpen, label: "Bookmarks", href: "/student/bookmarks" },
+    { icon: Bookmark, label: "Bookmarks", href: "/student/bookmarks" },
     { icon: Clock, label: "Notifications", href: "/student/notifications" },
     { icon: Users, label: "Profile", href: "/student/profile" },
   ]
@@ -92,6 +93,13 @@ export function StudentCourses() {
                     </div>
                   </div>
 
+                  {course.grade && (
+                    <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                      <span className="font-medium">Current Grade</span>
+                      <span className="text-xl font-bold text-primary">{course.grade}</span>
+                    </div>
+                  )}
+
                   {/* Course Stats */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div className="flex items-center gap-2">
@@ -99,26 +107,59 @@ export function StudentCourses() {
                       <span className="text-sm">{course.students} students</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
                       <span className="text-sm">{course.nextClass}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <BookOpen className="h-4 w-4 text-primary" />
-                      <span className="text-sm">Active</span>
+                      <Download className="h-4 w-4 text-primary" />
+                      <span className="text-sm">{course.materials || 12} materials</span>
                     </div>
                   </div>
 
+                  {course.recentMaterials && (
+                    <div className="border-t pt-4">
+                      <h4 className="font-semibold mb-2 text-sm">Recent Materials</h4>
+                      <div className="space-y-2">
+                        {course.recentMaterials.map((material: any, idx: number) => (
+                          <div key={idx} className="flex items-center justify-between p-2 bg-muted/50 rounded">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4 text-primary" />
+                              <span className="text-sm">{material.name}</span>
+                            </div>
+                            <Button size="sm" variant="ghost" className="h-8">
+                              <Download className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Action Buttons */}
                   <div className="flex gap-3 pt-2 flex-wrap">
-                    <button className="flex-1 min-w-[120px] px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium text-sm">
+                    <Button
+                      className="flex-1 min-w-[120px] bg-primary hover:bg-primary/90 text-primary-foreground"
+                      onClick={() => {
+                        // Deep-link to a course detail view via query param (keeps SPA feel)
+                        router.push(`/student/courses?courseId=${course.id}`)
+                      }}
+                    >
                       View Course
-                    </button>
-                    <button className="px-4 py-2 border-2 border-border rounded-lg hover:border-primary/40 hover:bg-primary/5 transition-colors font-medium text-sm">
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-2 bg-transparent"
+                      onClick={() => router.push(`/student/forums?course=${encodeURIComponent(course.name)}`)}
+                    >
                       Forums
-                    </button>
-                    <button className="px-4 py-2 border-2 border-border rounded-lg hover:border-primary/40 hover:bg-primary/5 transition-colors font-medium text-sm">
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-2 bg-transparent"
+                      onClick={() => router.push(`/student/resources?course=${encodeURIComponent(course.name)}`)}
+                    >
                       Resources
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </CardContent>

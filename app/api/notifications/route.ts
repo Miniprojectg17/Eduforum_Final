@@ -47,3 +47,8 @@ export async function GET(request: Request) {
 
   return NextResponse.json({ notifications: notificationsDB })
 }
+
+export async function PATCH(request: Request) {
+  notificationsDB.forEach((n) => (n.read = true))
+  return NextResponse.json({ ok: true, notifications: notificationsDB })
+}

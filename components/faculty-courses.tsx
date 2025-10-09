@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { BookOpen, MessageSquare, Upload, Megaphone, BarChart3, User, Users, Plus, Settings } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 const mockCourses = [
   {
@@ -74,7 +75,7 @@ export function FacultyCourses() {
             <h1 className="text-4xl font-bold text-foreground mb-2">Course Management</h1>
             <p className="text-muted-foreground text-lg">Manage your courses and enrolled students</p>
           </div>
-          <Button className="bg-primary hover:bg-primary/90">
+          <Button className="bg-primary hover:bg-primary/90" onClick={() => router.push("/faculty/courses/create")}>
             <Plus className="h-4 w-4 mr-2" />
             Create Course
           </Button>
@@ -131,18 +132,38 @@ export function FacultyCourses() {
 
                   {/* Action Buttons */}
                   <div className="flex gap-3 pt-2">
-                    <Button variant="outline" className="flex-1 bg-transparent">
-                      <Users className="h-4 w-4 mr-2" />
-                      Manage Students
-                    </Button>
-                    <Button variant="outline" className="flex-1 bg-transparent">
-                      <MessageSquare className="h-4 w-4 mr-2" />
-                      View Forums
-                    </Button>
-                    <Button variant="outline" className="flex-1 bg-transparent">
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Resources
-                    </Button>
+                    <Link href={`/faculty/courses/${course.id}/students`} className="flex-1">
+                      <Button variant="outline" className="w-full bg-transparent">
+                        <span className="flex items-center justify-center">
+                          <Users className="h-4 w-4 mr-2" />
+                          Manage Students
+                        </span>
+                      </Button>
+                    </Link>
+                    <Link href={`/faculty/courses/${course.id}/forums`} className="flex-1">
+                      <Button variant="outline" className="w-full bg-transparent">
+                        <span className="flex items-center justify-center">
+                          <MessageSquare className="h-4 w-4 mr-2" />
+                          View Forums
+                        </span>
+                      </Button>
+                    </Link>
+                    <Link href={`/faculty/courses/${course.id}/resources`} className="flex-1">
+                      <Button variant="outline" className="w-full bg-transparent">
+                        <span className="flex items-center justify-center">
+                          <Upload className="h-4 w-4 mr-2" />
+                          Upload Resources
+                        </span>
+                      </Button>
+                    </Link>
+                  </div>
+                  <div className="pt-2">
+                    <Link href={`/faculty/courses/${course.id}/manage`}>
+                      <Button variant="ghost" className="px-0 text-primary hover:text-primary underline">
+                        <Settings className="h-4 w-4 mr-2" />
+                        Manage Course
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               </CardContent>

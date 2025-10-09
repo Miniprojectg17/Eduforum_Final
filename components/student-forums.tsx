@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useSearchParams } from "next/navigation"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
@@ -21,6 +22,16 @@ export function StudentForums() {
   const [showNewQuestion, setShowNewQuestion] = useState(false)
   const [newQuestion, setNewQuestion] = useState({ title: "", content: "", course: "", tags: "" })
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialTag = searchParams?.get("tag") || "All"
+  const initialCourse = searchParams?.get("course") || ""
+  const threadIdParam = searchParams?.get("threadId")
+  const threadTitleParam = searchParams?.get("threadTitle")
+  const [activeTag, setActiveTag] = useState<string>(initialTag)
+  const [courseFilter, setCourseFilter] = useState<string>(initialCourse)
+
+  // local bookmarks for threads
+  const [bookmarkedThreads, setBookmarkedThreads] = useState<Set<number>>(new Set())
 
   const { data: threadsData, error: threadsError } = useSWR("/api/forums", fetcher, {
     refreshInterval: 5000, // Refresh every 5 seconds
@@ -43,6 +54,39 @@ export function StudentForums() {
     }
     setUser(parsedUser)
   }, [router])
+
+  useEffect(() => {
+    const saved = localStorage.getItem("bookmarkedThreads")
+    if (saved) {
+      try {
+        setBookmarkedThreads(new Set(JSON.parse(saved)))
+      } catch (_) {}
+    }
+  }, [])
+
+  useEffect(() => {
+    if (threadIdParam) {
+      const idNum = Number(threadIdParam)
+      if (!Number.isNaN(idNum)) setSelectedThread(idNum)
+    }
+  }, [threadIdParam])
+
+  useEffect(() => {
+    if (threadTitleParam && threadsData) {
+      const match = threadsData.threads.find((t: any) => t.title === threadTitleParam)
+      if (match) setSelectedThread(match.id)
+    }
+  }, [threadTitleParam, threadsData])
+
+  const toggleBookmarkThread = (threadId: number) => {
+    setBookmarkedThreads((prev) => {
+      const next = new Set(prev)
+      if (next.has(threadId)) next.delete(threadId)
+      else next.add(threadId)
+      localStorage.setItem("bookmarkedThreads", JSON.stringify(Array.from(next)))
+      return next
+    })
+  }
 
   const handlePostReply = async () => {
     if (!newReply.trim() || !selectedThread) return
@@ -103,6 +147,29 @@ export function StudentForums() {
     }
   }
 
+  const handleThreadVote = async (threadId: number, voteType: "up" | "down") => {
+    try {
+      // Optimistic: trigger a revalidation after request
+      await fetch(`/api/forums/${threadId}/vote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voteType }),
+      })
+    } catch (e) {
+      console.error("[v0] Thread vote failed", e)
+    } finally {
+      mutate("/api/forums")
+    }
+  }
+
+  const handleReportThread = async (threadId: number) => {
+    try {
+      await fetch(`/api/forums/${threadId}/report`, { method: "POST" })
+    } catch (e) {
+      console.log("[v0] Report thread fallback log:", threadId, e)
+    }
+  }
+
   if (!user) return null
 
   const menuItems = [
@@ -116,6 +183,14 @@ export function StudentForums() {
 
   const threads = threadsData?.threads || []
   const replies = repliesData?.replies || []
+
+  // Apply tag/course filters for list view
+  const allThreads = threadsData?.threads || []
+  const filteredThreads = allThreads.filter((thread: any) => {
+    const matchTag = activeTag === "All" || (thread.tags || []).includes(activeTag)
+    const matchCourse = !courseFilter || thread.course === courseFilter
+    return matchTag && matchCourse
+  })
 
   return (
     <DashboardLayout user={user} menuItems={menuItems} role="student">
@@ -185,23 +260,40 @@ export function StudentForums() {
           </Card>
         )}
 
-        {/* Filter Tags */}
-        <div className="flex gap-2 flex-wrap">
-          {["All", "assignments", "exams", "doubts", "resources"].map((tag) => (
-            <Badge
-              key={tag}
-              variant={tag === "All" ? "default" : "outline"}
-              className="cursor-pointer hover:bg-primary/10 px-4 py-2 transition-colors"
-            >
-              {tag}
-            </Badge>
-          ))}
+        {/* Filters: Tags + Course quick filter */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex gap-2 flex-wrap">
+            {["All", "assignments", "exams", "doubts", "resources"].map((tag) => (
+              <Badge
+                key={tag}
+                variant={activeTag === tag ? "default" : "outline"}
+                className="cursor-pointer hover:bg-primary/10 px-4 py-2 transition-colors"
+                onClick={() => setActiveTag(tag)}
+              >
+                {tag}
+              </Badge>
+            ))}
+          </div>
+          {Boolean(allThreads.length) && (
+            <div className="flex items-center gap-2">
+              <Label htmlFor="forumCourseFilter" className="text-sm">
+                Course
+              </Label>
+              <Input
+                id="forumCourseFilter"
+                placeholder="Filter by course"
+                value={courseFilter}
+                onChange={(e) => setCourseFilter(e.target.value)}
+                className="w-[200px]"
+              />
+            </div>
+          )}
         </div>
 
         {selectedThread === null ? (
           /* Thread List View */
           <div className="grid gap-4">
-            {threads.map((thread: any) => (
+            {filteredThreads.map((thread: any) => (
               <Card
                 key={thread.id}
                 className="border-2 hover:border-primary/40 transition-all cursor-pointer hover:shadow-md"
@@ -229,9 +321,19 @@ export function StudentForums() {
                       </CardDescription>
                     </div>
                     <div className="flex flex-col items-center gap-1 min-w-[60px]">
-                      <ThumbsUp className="h-5 w-5 text-primary" />
-                      <span className="font-bold text-lg text-primary">{thread.upvotes}</span>
-                      <span className="text-xs text-muted-foreground">upvotes</span>
+                      <button
+                        type="button"
+                        className="flex flex-col items-center"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleThreadVote(thread.id, "up")
+                        }}
+                        aria-label="Upvote thread"
+                      >
+                        <ThumbsUp className="h-5 w-5 text-primary" />
+                        <span className="font-bold text-lg text-primary">{thread.upvotes}</span>
+                        <span className="text-xs text-muted-foreground">upvotes</span>
+                      </button>
                     </div>
                   </div>
                 </CardHeader>
@@ -248,6 +350,58 @@ export function StudentForums() {
                       <MessageSquare className="h-4 w-4" />
                       <span>{thread.replies} replies</span>
                     </div>
+                  </div>
+
+                  {/* Thread actions */}
+                  <div className="flex gap-2 mt-4 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-2 bg-transparent"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedThread(thread.id)
+                      }}
+                    >
+                      Preview Answers
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={bookmarkedThreads.has(thread.id) ? "default" : "outline"}
+                      className={
+                        bookmarkedThreads.has(thread.id)
+                          ? "bg-primary text-primary-foreground"
+                          : "border-2 bg-transparent"
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleBookmarkThread(thread.id)
+                      }}
+                    >
+                      {bookmarkedThreads.has(thread.id) ? "Bookmarked" : "Bookmark"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-2 bg-transparent"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleReportThread(thread.id)
+                      }}
+                    >
+                      Report
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-2 bg-transparent"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push(`/student/resources?course=${encodeURIComponent(thread.course)}`)
+                      }}
+                    >
+                      Open Course Resources
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

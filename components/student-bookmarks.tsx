@@ -123,7 +123,20 @@ export function StudentBookmarks() {
               </CardHeader>
               <CardContent>
                 <div className="flex gap-2">
-                  <Button size="sm" className="bg-primary hover:bg-primary/90">
+                  <Button
+                    size="sm"
+                    className="bg-primary hover:bg-primary/90"
+                    onClick={() => {
+                      if (bookmark.type === "thread") {
+                        // Prefer thread title param for selection in forums
+                        const title = encodeURIComponent(bookmark.title)
+                        router.push(`/student/forums?threadTitle=${title}&from=bookmarks`)
+                      } else {
+                        // Resource: jump to resources (could filter by course)
+                        router.push(`/student/resources?course=${encodeURIComponent(bookmark.course)}`)
+                      }
+                    }}
+                  >
                     View {bookmark.type === "thread" ? "Thread" : "Resource"}
                   </Button>
                 </div>

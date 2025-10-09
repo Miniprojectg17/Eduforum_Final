@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import useSWR from "swr"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { BookOpen, MessageSquare, Upload, Megaphone, BarChart3, User, CheckCircle, X, Trash2 } from "lucide-react"
@@ -9,62 +10,24 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
-const mockThreads = [
-  {
-    id: 1,
-    course: "Data Structures",
-    title: "How to implement a binary search tree?",
-    author: "John Doe",
-    timestamp: "2 hours ago",
-    replies: 5,
-    needsReview: true,
-  },
-  {
-    id: 2,
-    course: "Web Development",
-    title: "Best practices for React state management?",
-    author: "Jane Smith",
-    timestamp: "5 hours ago",
-    replies: 8,
-    needsReview: false,
-  },
-  {
-    id: 3,
-    course: "Database Systems",
-    title: "SQL vs NoSQL - When to use which?",
-    author: "Mike Johnson",
-    timestamp: "1 day ago",
-    replies: 12,
-    needsReview: true,
-  },
-]
-
-const mockAnswers = [
-  {
-    id: 1,
-    author: "Alice Brown",
-    content:
-      "A binary search tree is a node-based data structure where each node has at most two children. The left child contains values less than the parent, and the right child contains values greater than the parent.",
-    timestamp: "1 hour ago",
-    upvotes: 8,
-    isVerified: false,
-  },
-  {
-    id: 2,
-    author: "Bob Wilson",
-    content:
-      "Here's a simple implementation in Python:\n\nclass Node:\n    def __init__(self, value):\n        self.value = value\n        self.left = None\n        self.right = None",
-    timestamp: "45 minutes ago",
-    upvotes: 5,
-    isVerified: false,
-  },
-]
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export function FacultyForums() {
   const [user, setUser] = useState<any>(null)
   const [selectedThread, setSelectedThread] = useState<number | null>(null)
   const [facultyReply, setFacultyReply] = useState("")
+  const [courseId] = useState<string>("1")
   const router = useRouter()
+  const [posting, setPosting] = useState(false)
+
+  const { data: courseThreads, mutate } = useSWR(`/api/faculty/courses/${courseId}/forums`, fetcher, {
+    refreshInterval: 10000,
+  })
+
+  const { data: threadDetail, mutate: mutateThread } = useSWR(
+    selectedThread !== null ? `/api/faculty/courses/${courseId}/forums/${selectedThread}` : null,
+    fetcher,
+  )
 
   useEffect(() => {
     const userData = localStorage.getItem("user")
@@ -91,6 +54,74 @@ export function FacultyForums() {
     { icon: User, label: "Profile", href: "/faculty/profile" },
   ]
 
+  const currentThread =
+    selectedThread !== null
+      ? (threadDetail || courseThreads || []).find(
+          (t: any) => t.id === (selectedThread?.toString?.() || selectedThread),
+        )
+      : null
+
+  const handleVerify = async (answerId: string) => {
+    if (!currentThread) return
+    const optimistic = { ...(currentThread as any) }
+    optimistic.verifiedAnswerId = answerId
+    optimistic.replies = optimistic.replies.map((r: any) => (r.id === answerId ? { ...r, status: "verified" } : r))
+    await mutateThread(
+      async () => {
+        await fetch(`/api/faculty/forums/answers/${answerId}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "verify", courseId, threadId: currentThread.id }),
+        })
+        return (await fetch(`/api/faculty/courses/${courseId}/forums`).then((r) => r.json())) as any
+      },
+      { revalidate: true },
+    )
+  }
+
+  const handleIncorrect = async (answerId: string) => {
+    if (!currentThread) return
+    await mutateThread(
+      async () => {
+        await fetch(`/api/faculty/forums/answers/${answerId}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "incorrect", courseId, threadId: currentThread.id }),
+        })
+        return (await fetch(`/api/faculty/courses/${courseId}/forums`).then((r) => r.json())) as any
+      },
+      { revalidate: true },
+    )
+  }
+
+  const handleDelete = async (answerId: string) => {
+    if (!currentThread) return
+    const ok = confirm("Are you sure you want to delete this answer?")
+    if (!ok) return
+    await mutateThread(
+      async () => {
+        await fetch(`/api/faculty/forums/answers/${answerId}?courseId=${courseId}&threadId=${currentThread.id}`, {
+          method: "DELETE",
+        })
+        return (await fetch(`/api/faculty/courses/${courseId}/forums`).then((r) => r.json())) as any
+      },
+      { revalidate: true },
+    )
+  }
+
+  const postVerifiedAnswer = async () => {
+    if (!currentThread || !facultyReply.trim()) return
+    setPosting(true)
+    await fetch(`/api/faculty/forums/${currentThread.id}/verified-answer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ courseId, content: facultyReply }),
+    })
+    setFacultyReply("")
+    setPosting(false)
+    await mutateThread()
+  }
+
   return (
     <DashboardLayout user={user} menuItems={menuItems} role="faculty">
       <div className="space-y-6">
@@ -115,7 +146,7 @@ export function FacultyForums() {
         {selectedThread === null ? (
           /* Thread List View */
           <div className="grid gap-4">
-            {mockThreads.map((thread) => (
+            {(courseThreads || []).map((thread: any) => (
               <Card
                 key={thread.id}
                 className="border-2 hover:border-primary/40 transition-colors cursor-pointer"
@@ -125,8 +156,8 @@ export function FacultyForums() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="secondary">{thread.course}</Badge>
-                        {thread.needsReview && <Badge className="bg-accent text-white">Needs Review</Badge>}
+                        <Badge variant="secondary">Course {courseId}</Badge>
+                        {thread.verifiedAnswerId ? <Badge className="bg-success text-white">Has Verified</Badge> : null}
                       </div>
                       <CardTitle className="text-xl mb-2">{thread.title}</CardTitle>
                       <CardDescription className="flex items-center gap-4 text-sm">
@@ -134,7 +165,7 @@ export function FacultyForums() {
                         <span>•</span>
                         <span>{thread.timestamp}</span>
                         <span>•</span>
-                        <span>{thread.replies} replies</span>
+                        <span>{thread.replies?.length || 0} replies</span>
                       </CardDescription>
                     </div>
                   </div>
@@ -155,19 +186,23 @@ export function FacultyForums() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="secondary">Data Structures</Badge>
+                      <Badge variant="secondary">Course {courseId}</Badge>
+                      {currentThread?.verifiedAnswerId ? (
+                        <Badge className="bg-success text-white">Verified Answer Present</Badge>
+                      ) : null}
                     </div>
-                    <CardTitle className="text-2xl">How to implement a binary search tree?</CardTitle>
+                    <CardTitle className="text-2xl">{currentThread?.title}</CardTitle>
                     <CardDescription className="flex items-center gap-4 text-base mt-2">
-                      <span>by John Doe</span>
+                      <span>by {currentThread?.author}</span>
                       <span>•</span>
-                      <span>2 hours ago</span>
+                      <span>{currentThread?.timestamp}</span>
                     </CardDescription>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
                     className="text-destructive hover:text-destructive bg-transparent"
+                    onClick={() => handleDelete(currentThread.id)}
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
                     Delete
@@ -176,51 +211,64 @@ export function FacultyForums() {
               </CardHeader>
               <CardContent className="pt-6">
                 <p className="text-base leading-relaxed">
-                  I'm working on the assignment for implementing a binary search tree, but I'm confused about how to
-                  structure the insert and search methods. Can someone explain the logic and maybe provide a simple
-                  example?
+                  {"View and moderate answers below. Post an official verified answer using the form at the end."}
                 </p>
               </CardContent>
             </Card>
 
-            {/* Student Answers with Verification Controls */}
+            {/* Student Answers */}
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold">Student Answers ({mockAnswers.length})</h2>
-
-              {mockAnswers.map((answer) => (
-                <Card key={answer.id} className="border-2">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="font-semibold">{answer.author}</span>
-                          <span className="text-sm text-muted-foreground">• {answer.timestamp}</span>
-                          <Badge variant="outline">{answer.upvotes} upvotes</Badge>
+              <h2 className="text-2xl font-bold">Student Answers ({currentThread?.replies?.length || 0})</h2>
+              {(currentThread?.replies || []).map((answer: any) => {
+                const isVerified = currentThread?.verifiedAnswerId === answer.id || answer.status === "verified"
+                return (
+                  <Card key={answer.id} className={`border-2 ${isVerified ? "border-success/60" : ""}`}>
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="font-semibold">{answer.author}</span>
+                            <span className="text-sm text-muted-foreground">• {answer.timestamp}</span>
+                            <Badge variant="outline">{answer.upvotes} upvotes</Badge>
+                            {answer.status === "incorrect" && (
+                              <Badge className="bg-destructive text-white">Incorrect</Badge>
+                            )}
+                            {isVerified && <Badge className="bg-success text-white">Verified</Badge>}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <p className="text-base leading-relaxed whitespace-pre-wrap">{answer.content}</p>
-
-                    {/* Faculty Moderation Actions */}
-                    <div className="flex gap-3 pt-4 border-t">
-                      <Button className="bg-success hover:bg-success/90 text-white">
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Verify Answer
-                      </Button>
-                      <Button variant="outline" className="text-destructive hover:text-destructive bg-transparent">
-                        <X className="h-4 w-4 mr-2" />
-                        Mark Incorrect
-                      </Button>
-                      <Button variant="outline" className="text-destructive hover:text-destructive bg-transparent">
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-base leading-relaxed whitespace-pre-wrap">{answer.content}</p>
+                      <div className="flex gap-3 pt-4 border-t">
+                        <Button
+                          className="bg-success hover:bg-success/90 text-white"
+                          onClick={() => handleVerify(answer.id)}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Verify Answer
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="text-destructive hover:text-destructive bg-transparent"
+                          onClick={() => handleIncorrect(answer.id)}
+                        >
+                          <X className="h-4 w-4 mr-2" />
+                          Mark Incorrect
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="text-destructive hover:text-destructive bg-transparent"
+                          onClick={() => handleDelete(answer.id)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
 
             {/* Faculty Reply Form */}
@@ -236,9 +284,13 @@ export function FacultyForums() {
                   onChange={(e) => setFacultyReply(e.target.value)}
                   className="min-h-[120px]"
                 />
-                <Button className="bg-primary hover:bg-primary/90">
+                <Button
+                  className="bg-primary hover:bg-primary/90"
+                  onClick={postVerifiedAnswer}
+                  disabled={posting || !facultyReply.trim()}
+                >
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Post Verified Answer
+                  {posting ? "Posting..." : "Post Verified Answer"}
                 </Button>
               </CardContent>
             </Card>

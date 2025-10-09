@@ -1,9 +1,9 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { LogOut, Menu, X, Search } from "lucide-react"
@@ -23,8 +23,9 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, user, menuItems, role }: DashboardLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("") // Added search state
+  const [searchQuery, setSearchQuery] = useState("")
   const router = useRouter()
+  const pathname = usePathname()
 
   const handleLogout = () => {
     localStorage.removeItem("user")
@@ -32,11 +33,9 @@ export function DashboardLayout({ children, user, menuItems, role }: DashboardLa
   }
 
   const handleSearch = (e: React.FormEvent) => {
-    // Added search handler
     e.preventDefault()
     if (searchQuery.trim()) {
-      console.log(`[v0] Searching for: ${searchQuery}`)
-      // In a real app, this would navigate to search results
+      router.push(`/search?q=${encodeURIComponent(searchQuery)}&role=${role}`)
     }
   }
 
@@ -52,7 +51,15 @@ export function DashboardLayout({ children, user, menuItems, role }: DashboardLa
             >
               {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <h1 className="text-2xl font-bold text-primary">EduForum</h1>
+            {/* Clickable EduForum logo to role dashboard */}
+            <Link
+              href={role === "student" ? "/student/dashboard" : "/faculty/dashboard"}
+              className="text-2xl font-bold text-primary hover:opacity-90"
+              onClick={() => setIsSidebarOpen(false)}
+              aria-label="Go to dashboard"
+            >
+              EduForum
+            </Link>
             <span className="hidden sm:inline-block px-3 py-1 bg-primary/10 text-primary text-sm font-semibold rounded-full">
               {role === "student" ? "Student" : "Faculty"}
             </span>
@@ -93,14 +100,19 @@ export function DashboardLayout({ children, user, menuItems, role }: DashboardLa
           <nav className="space-y-2">
             {menuItems.map((item, i) => {
               const Icon = item.icon
+              const isActive = pathname === item.href
               return (
-                <button
+                <Link
                   key={i}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors text-left font-medium"
+                  href={item.href}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left font-medium ${
+                    isActive ? "bg-primary text-primary-foreground" : "hover:bg-primary/10 hover:text-primary"
+                  }`}
+                  onClick={() => setIsSidebarOpen(false)}
                 >
                   <Icon className="h-5 w-5" />
                   {item.label}
-                </button>
+                </Link>
               )
             })}
           </nav>

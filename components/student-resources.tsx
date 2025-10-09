@@ -8,12 +8,25 @@ import { Card, CardContent } from "@/components/ui/card"
 import { BookOpen, MessageSquare, FileText, Download, Eye, Clock, User, File, Video, ImageIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useSearchParams } from "next/navigation"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 export function StudentResources() {
   const [user, setUser] = useState<any>(null)
-  const [selectedCourse, setSelectedCourse] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const initialCourse = searchParams?.get("course") || null
+  const [selectedCourse, setSelectedCourse] = useState<string | null>(initialCourse)
+
+  // local user progress/bookmarks/lastAccessed
+  const [bookmarked, setBookmarked] = useState<Set<number>>(new Set())
+  const [completed, setCompleted] = useState<Set<number>>(new Set())
+  const [lastAccessed, setLastAccessed] = useState<Record<number, string>>({})
+
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewItem, setPreviewItem] = useState<any | null>(null)
+
   const router = useRouter()
 
   const { data: resourcesData, error } = useSWR("/api/resources", fetcher, {
@@ -33,6 +46,63 @@ export function StudentResources() {
     }
     setUser(parsedUser)
   }, [router])
+
+  useEffect(() => {
+    try {
+      const b = localStorage.getItem("resourceBookmarks")
+      const c = localStorage.getItem("resourceCompleted")
+      const la = localStorage.getItem("resourceLastAccessed")
+      if (b) setBookmarked(new Set(JSON.parse(b)))
+      if (c) setCompleted(new Set(JSON.parse(c)))
+      if (la) setLastAccessed(JSON.parse(la))
+    } catch (_) {}
+  }, [])
+
+  const persist = (key: string, value: any) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value))
+    } catch (_) {}
+  }
+
+  const toggleBookmark = (id: number) => {
+    setBookmarked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      persist("resourceBookmarks", Array.from(next))
+      return next
+    })
+  }
+
+  const toggleCompleted = (id: number) => {
+    setCompleted((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      persist("resourceCompleted", Array.from(next))
+      return next
+    })
+  }
+
+  const markAccessed = (id: number) => {
+    const ts = new Date().toLocaleString()
+    setLastAccessed((prev) => {
+      const next = { ...prev, [id]: ts }
+      persist("resourceLastAccessed", next)
+      return next
+    })
+  }
+
+  const handleDownload = async (resItem: any) => {
+    try {
+      // Call a download endpoint if available, otherwise just mark accessed
+      await fetch(`/api/resources/${resItem.id}/download`, { method: "POST" })
+    } catch (_) {
+      // no-op; optimistic
+    } finally {
+      markAccessed(resItem.id)
+    }
+  }
 
   if (!user) return null
 
@@ -101,48 +171,111 @@ export function StudentResources() {
 
         {/* Resources Grid */}
         <div className="grid gap-4">
-          {filteredResources.map((resource: any) => (
-            <Card key={resource.id} className="border-2 hover:border-primary/40 transition-all hover:shadow-md">
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4 flex-wrap md:flex-nowrap">
-                  <div className="p-3 bg-primary/10 rounded-lg">{getFileIcon(resource.type)}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-4 mb-2 flex-wrap">
-                      <div className="flex-1 min-w-[200px]">
-                        <Badge variant="secondary" className="mb-2 bg-secondary text-secondary-foreground">
-                          {resource.course}
-                        </Badge>
-                        <h3 className="text-lg font-semibold mb-1 text-balance">{resource.title}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Uploaded by {resource.uploadedBy} • {resource.uploadDate}
-                        </p>
+          {filteredResources.map((resource: any) => {
+            const isBookmarked = bookmarked.has(resource.id)
+            const isCompleted = completed.has(resource.id)
+            const last = lastAccessed[resource.id]
+            return (
+              <Card key={resource.id} className="border-2 hover:border-primary/40 transition-all hover:shadow-md">
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4 flex-wrap md:flex-nowrap">
+                    <div className="p-3 bg-primary/10 rounded-lg">{getFileIcon(resource.type)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-4 mb-2 flex-wrap">
+                        <div className="flex-1 min-w-[200px]">
+                          <Badge variant="secondary" className="mb-2 bg-secondary text-secondary-foreground">
+                            {resource.course}
+                          </Badge>
+                          <h3 className="text-lg font-semibold mb-1 text-balance">{resource.title}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Uploaded by {resource.uploadedBy} • {resource.uploadDate}
+                          </p>
+                          {last && <p className="text-xs text-muted-foreground mt-1">Last accessed: {last}</p>}
+                          {isCompleted && <p className="text-xs font-medium mt-1 text-primary">Marked as completed</p>}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium">{resource.size}</p>
+                          <p className="text-xs text-muted-foreground">{resource.downloads} downloads</p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium">{resource.size}</p>
-                        <p className="text-xs text-muted-foreground">{resource.downloads} downloads</p>
+                      <div className="flex gap-2 mt-4 flex-wrap">
+                        <Button
+                          size="sm"
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                          onClick={() => handleDownload(resource)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Download
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="hover:bg-primary/5 bg-transparent"
+                          onClick={() => {
+                            markAccessed(resource.id)
+                            setPreviewItem(resource)
+                            setPreviewOpen(true)
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Preview
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={isBookmarked ? "default" : "outline"}
+                          className={
+                            isBookmarked ? "bg-primary text-primary-foreground" : "hover:bg-primary/5 bg-transparent"
+                          }
+                          onClick={() => toggleBookmark(resource.id)}
+                        >
+                          <BookOpen className="h-4 w-4 mr-2" />
+                          {isBookmarked ? "Bookmarked" : "Bookmark"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={isCompleted ? "default" : "outline"}
+                          className={
+                            isCompleted ? "bg-primary text-primary-foreground" : "hover:bg-primary/5 bg-transparent"
+                          }
+                          onClick={() => toggleCompleted(resource.id)}
+                        >
+                          Mark as completed
+                        </Button>
                       </div>
-                    </div>
-                    <div className="flex gap-2 mt-4 flex-wrap">
-                      <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                        <Download className="h-4 w-4 mr-2" />
-                        Download
-                      </Button>
-                      <Button size="sm" variant="outline" className="hover:bg-primary/5 bg-transparent">
-                        <Eye className="h-4 w-4 mr-2" />
-                        Preview
-                      </Button>
-                      <Button size="sm" variant="outline" className="hover:bg-primary/5 bg-transparent">
-                        <BookOpen className="h-4 w-4 mr-2" />
-                        Bookmark
-                      </Button>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       </div>
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{previewItem?.title || "Preview"}</DialogTitle>
+          </DialogHeader>
+          <div className="mt-2 max-h-[70vh] overflow-auto rounded-md border">
+            {previewItem?.type?.toLowerCase() === "pdf" ? (
+              <iframe title="PDF Preview" src={previewItem.url} className="w-full h-[70vh]" />
+            ) : previewItem?.type?.toLowerCase() === "video" || previewItem?.type?.toLowerCase() === "mp4" ? (
+              <video controls className="w-full h-auto" src={previewItem.url} crossOrigin="anonymous" />
+            ) : previewItem?.type?.toLowerCase() === "image" ||
+              ["jpg", "png", "jpeg"].includes((previewItem?.type || "").toLowerCase()) ? (
+              <img
+                alt={previewItem?.title || "Preview image"}
+                src={previewItem.url || "/placeholder.svg"}
+                className="w-full h-auto"
+                crossOrigin="anonymous"
+              />
+            ) : (
+              <div className="p-4 text-sm text-muted-foreground">
+                No viewer available for this file type. Please use Download.
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

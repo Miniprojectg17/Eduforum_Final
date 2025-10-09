@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -12,72 +11,26 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { GoogleSignInButton } from "@/components/google-sign-in-button"
-import { GoogleAccountPicker } from "@/components/google-account-picker"
 
 export function LoginForm() {
   const [facultyEmail, setFacultyEmail] = useState("")
   const [facultyPassword, setFacultyPassword] = useState("")
   const [studentPrn, setStudentPrn] = useState("")
+  const [studentEmail, setStudentEmail] = useState("")
   const [studentPassword, setStudentPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [activeTab, setActiveTab] = useState("student")
-  const [showGooglePicker, setShowGooglePicker] = useState(false)
-  const [googleAccountType, setGoogleAccountType] = useState<"faculty" | "student">("student")
   const router = useRouter()
-
-  const handleGoogleSignInClick = (accountType: "faculty" | "student") => {
-    setError("")
-    setGoogleAccountType(accountType)
-    setShowGooglePicker(true)
-  }
-
-  const handleGoogleAccountSelect = async (account: { id: string; name: string; email: string }) => {
-    setIsLoading(true)
-    setError("")
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      if (googleAccountType === "faculty") {
-        if (!account.email.toLowerCase().endsWith("@kitcoek")) {
-          setError("Faculty must sign in with a @kitcoek email address")
-          setIsLoading(false)
-          return
-        }
-
-        const user = {
-          email: account.email,
-          role: "faculty",
-          name: account.name,
-        }
-        localStorage.setItem("user", JSON.stringify(user))
-        router.push("/faculty/dashboard")
-      } else {
-        const user = {
-          email: account.email,
-          role: "student",
-          name: account.name,
-          prn: "GOOGLE_" + account.id.slice(-8).toUpperCase(),
-        }
-        localStorage.setItem("user", JSON.stringify(user))
-        router.push("/student/dashboard")
-      }
-    } catch (err) {
-      console.error("[v0] Google login error:", err)
-      setError(err instanceof Error ? err.message : "Failed to sign in with Google")
-      setIsLoading(false)
-    }
-  }
 
   const handleFacultyLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     setIsLoading(true)
 
-    if (!facultyEmail.toLowerCase().endsWith("@kitcoek")) {
-      setError("Faculty email must be a @kitcoek email address")
+    const email = facultyEmail.trim().toLowerCase()
+    if (!email.endsWith("@kitcoek.in")) {
+      setError("Faculty email must end with @kitcoek.in")
       setIsLoading(false)
       return
     }
@@ -90,7 +43,6 @@ export function LoginForm() {
       name: facultyEmail.split("@")[0],
     }
     localStorage.setItem("user", JSON.stringify(user))
-
     router.push("/faculty/dashboard")
   }
 
@@ -99,35 +51,43 @@ export function LoginForm() {
     setError("")
     setIsLoading(true)
 
+    const prn = studentPrn.trim()
+    const email = studentEmail.trim().toLowerCase()
+    if (prn.length !== 10) {
+      setError("PRN must be exactly 10 characters")
+      setIsLoading(false)
+      return
+    }
+    if (!email.endsWith("@gmail.com")) {
+      setError("Student email must end with @gmail.com")
+      setIsLoading(false)
+      return
+    }
+
     await new Promise((resolve) => setTimeout(resolve, 800))
 
     const user = {
-      prn: studentPrn,
+      prn,
+      email: studentEmail,
       role: "student",
-      name: `Student ${studentPrn}`,
+      name: `Student ${prn}`,
     }
     localStorage.setItem("user", JSON.stringify(user))
-
     router.push("/student/dashboard")
   }
 
   return (
-    <>
-      <GoogleAccountPicker
-        open={showGooglePicker}
-        onClose={() => setShowGooglePicker(false)}
-        onSelectAccount={handleGoogleAccountSelect}
-        accountType={googleAccountType}
-      />
-
-      <Card className="border-2 border-border shadow-xl">
-        <CardHeader className="space-y-1 bg-gradient-to-br from-primary/10 to-accent/10 rounded-t-lg">
-          <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
-          <CardDescription className="text-base">Enter your credentials to access your dashboard</CardDescription>
+    <div className="flex justify-center items-start mt-8 min-h-screen bg-transparent">
+      <Card className="border-2 border-border shadow-xl rounded-lg w-full max-w-md">
+        <CardHeader className="space-y-1 rounded-t-lg pb-0 pt-8">
+          <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
+          <CardDescription className="text-base text-center">
+            Enter your credentials to access your dashboard
+          </CardDescription>
         </CardHeader>
-        <CardContent className="pt-6">
+        <CardContent className="pt-8 space-y-6">
           {error && (
-            <Alert variant="destructive" className="mb-4">
+            <Alert variant="destructive" className="mb-2">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
@@ -140,18 +100,6 @@ export function LoginForm() {
             </TabsList>
 
             <TabsContent value="student">
-              <div className="mb-6">
-                <GoogleSignInButton onClick={() => handleGoogleSignInClick("student")} disabled={isLoading} />
-                <div className="relative my-6">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-border" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-                  </div>
-                </div>
-              </div>
-
               <form onSubmit={handleStudentLogin} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="student-prn">PRN (Permanent Registration Number)</Label>
@@ -161,6 +109,18 @@ export function LoginForm() {
                     placeholder="Enter your PRN"
                     value={studentPrn}
                     onChange={(e) => setStudentPrn(e.target.value)}
+                    required
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="student-email">Email</Label>
+                  <Input
+                    id="student-email"
+                    type="email"
+                    placeholder="student@gmail.com"
+                    value={studentEmail}
+                    onChange={(e) => setStudentEmail(e.target.value)}
                     required
                     className="h-11"
                   />
@@ -188,25 +148,13 @@ export function LoginForm() {
             </TabsContent>
 
             <TabsContent value="faculty">
-              <div className="mb-6">
-                <GoogleSignInButton onClick={() => handleGoogleSignInClick("faculty")} disabled={isLoading} />
-                <div className="relative my-6">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-border" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-                  </div>
-                </div>
-              </div>
-
               <form onSubmit={handleFacultyLogin} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="faculty-email">Email</Label>
                   <Input
                     id="faculty-email"
                     type="email"
-                    placeholder="faculty@kitcoek"
+                    placeholder="faculty@kitcoek.in"
                     value={facultyEmail}
                     onChange={(e) => setFacultyEmail(e.target.value)}
                     required
@@ -236,7 +184,7 @@ export function LoginForm() {
             </TabsContent>
           </Tabs>
 
-          <div className="mt-6 text-center">
+          <div className="text-center">
             <p className="text-sm text-muted-foreground">
               Don't have an account?{" "}
               <Link href="/signup" className="font-semibold text-primary hover:underline">
@@ -246,6 +194,6 @@ export function LoginForm() {
           </div>
         </CardContent>
       </Card>
-    </>
+    </div>
   )
 }

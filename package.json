@@ -2,6 +2,7 @@
   "name": "my-v0-project",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@9.1.0",
   "scripts": {
     "build": "next build",
     "dev": "next dev",
@@ -9,10 +10,8 @@
     "start": "next start",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.cjs"
-  },
+  }
+},
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@prisma/client": "^6.17.1",

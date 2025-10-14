@@ -1,0 +1,137 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model Course {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  resources Resource[]
+  threads   Thread[]
+  students  StudentProfile[] @relation("StudentEnrolledCourses")
+  managers  FacultyProfile[] @relation("ManagedCourses")
+  announcements AnnouncementOnCourse[]
+}
+
+model Thread {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?
+  author    String
+  timestamp DateTime @default(now())
+  course    Course   @relation(fields: [courseId], references: [id])
+  courseId  String
+  replies   Reply[]
+  verifiedAnswerId String?
+}
+
+model Reply {
+  id        String   @id @default(cuid())
+  author    String
+  content   String
+  timestamp DateTime @default(now())
+  upvotes   Int      @default(0)
+  status    ReplyStatus?
+  thread    Thread   @relation(fields: [threadId], references: [id])
+  threadId  String
+}
+
+enum ReplyStatus {
+  verified
+  incorrect
+  normal
+}
+
+model Resource {
+  id         String   @id @default(cuid())
+  course     Course   @relation(fields: [courseId], references: [id])
+  courseId   String
+  title      String
+  description String?
+  tags       String[]
+  fileType   FileType
+  url        String?
+  uploadedAt DateTime @default(now())
+  downloads  Int      @default(0)
+  mimeType   String?
+  size       Int?
+  provider   String?
+  storageKey String?
+  duration   Int?
+}
+
+enum FileType {
+  pdf
+  video
+  doc
+  zip
+  link
+  ppt
+  other
+}
+
+// Profiles
+model StudentProfile {
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  prn             String
+  department      String
+  year            String
+  enrolledCourses Course[] @relation("StudentEnrolledCourses")
+  posts           Int      @default(0)
+  replies         Int      @default(0)
+  upvotes         Int      @default(0)
+  phone           String?
+  avatarUrl       String?
+}
+
+model FacultyProfile {
+  id                String   @id @default(cuid())
+  name              String
+  email             String   @unique
+  department        String
+  designation       String
+  managedCourses    Course[] @relation("ManagedCourses")
+  phone             String?
+  office            String?
+  avatarUrl         String?
+  studentsManaged   Int      @default(0)
+  resourcesUploaded Int      @default(0)
+  announcementsMade Int      @default(0)
+  postsVerified     Int      @default(0)
+}
+
+// Announcements
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  pinned      Boolean  @default(false)
+  scheduledAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  courses     AnnouncementOnCourse[]
+}
+
+model AnnouncementOnCourse {
+  announcement   Announcement @relation(fields: [announcementId], references: [id])
+  announcementId String
+  course         Course       @relation(fields: [courseId], references: [id])
+  courseId       String
+
+  @@id([announcementId, courseId])
+}

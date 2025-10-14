@@ -1,99 +1,118 @@
 import { NextResponse } from "next/server"
+import { prisma } from "../../../lib/prisma"
 
-const resourcesDB = [
-  {
-    id: 1,
-    courseId: 1,
-    course: "Data Structures",
-    title: "Lecture 5: Binary Trees",
-    type: "PDF",
-    size: "2.4 MB",
-    uploadedBy: "Prof. Smith",
-    uploadDate: "2024-01-15",
-    downloads: 45,
-    url: "/placeholder.pdf",
-  },
-  {
-    id: 2,
-    courseId: 1,
-    course: "Data Structures",
-    title: "Assignment 3: BST Implementation",
-    type: "PDF",
-    size: "1.2 MB",
-    uploadedBy: "Prof. Smith",
-    uploadDate: "2024-01-14",
-    downloads: 38,
-    url: "/placeholder.pdf",
-  },
-  {
-    id: 3,
-    courseId: 2,
-    course: "Web Development",
-    title: "React Hooks Tutorial",
-    type: "Video",
-    size: "125 MB",
-    uploadedBy: "Prof. Johnson",
-    uploadDate: "2024-01-13",
-    downloads: 52,
-    url: "/placeholder.mp4",
-  },
-  {
-    id: 4,
-    courseId: 2,
-    course: "Web Development",
-    title: "Next.js Project Template",
-    type: "ZIP",
-    size: "5.8 MB",
-    uploadedBy: "Prof. Johnson",
-    uploadDate: "2024-01-12",
-    downloads: 41,
-    url: "/placeholder.zip",
-  },
-  {
-    id: 5,
-    courseId: 3,
-    course: "Database Systems",
-    title: "SQL Cheat Sheet",
-    type: "PDF",
-    size: "0.8 MB",
-    uploadedBy: "Prof. Williams",
-    uploadDate: "2024-01-11",
-    downloads: 67,
-    url: "/placeholder.pdf",
-  },
-]
+export const runtime = 'nodejs'
+
+function formatSize(bytes?: number | null): string {
+  if (!bytes || bytes <= 0) return '—'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = bytes
+  let i = 0
+  while (size >= 1024 && i < units.length - 1) {
+    size /= 1024
+    i++
+  }
+  return `${size % 1 === 0 ? size : size.toFixed(1)} ${units[i]}`
+}
+
+function displayType(fileType?: string | null): string {
+  return (fileType || '').toString().toUpperCase() || 'OTHER'
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  const courseId = searchParams.get("courseId")
+  const courseIdParam = searchParams.get("courseId")
 
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  let filteredResources = resourcesDB
-  if (courseId) {
-    filteredResources = resourcesDB.filter((r) => r.courseId === Number.parseInt(courseId))
+  let where: any = {}
+  if (courseIdParam) {
+    // match by internal id or by code/name fallback
+    const courseById = await prisma.course.findFirst({ where: { id: courseIdParam } })
+    const courseByCode = courseById ? null : await prisma.course.findFirst({ where: { code: courseIdParam } })
+    const course = courseById || courseByCode
+    if (course) where = { courseId: course.id }
   }
 
-  return NextResponse.json({ resources: filteredResources })
+  const rows = await prisma.resource.findMany({
+    where,
+    include: { course: true },
+    orderBy: { uploadedAt: 'desc' },
+  })
+
+  const resources = rows.map((r, i) => ({
+    id: i + 1,
+    courseId: i + 1,
+    course: r.course?.name || '',
+    title: r.title,
+    type: displayType(r.fileType as any),
+    size: formatSize(r.size ?? undefined),
+    uploadedBy: 'TBD',
+    uploadDate: r.uploadedAt.toISOString().split('T')[0],
+    downloads: r.downloads ?? 0,
+    url: r.url || '',
+  }))
+
+  return NextResponse.json({ resources })
 }
 
 export async function POST(request: Request) {
   const body = await request.json()
 
-  const newResource = {
-    id: resourcesDB.length + 1,
-    courseId: body.courseId,
-    course: body.course,
-    title: body.title,
-    type: body.type,
-    size: body.size,
-    uploadedBy: body.uploadedBy,
-    uploadDate: new Date().toISOString().split("T")[0],
-    downloads: 0,
-    url: body.url,
+  // Locate course by id/code/name
+  let course = null as null | { id: string }
+  if (body.courseId) {
+    course = await prisma.course.findFirst({ where: { id: String(body.courseId) } })
+  }
+  if (!course && body.code) {
+    course = await prisma.course.findFirst({ where: { code: String(body.code) } })
+  }
+  if (!course && body.course) {
+    course = await prisma.course.findFirst({ where: { name: String(body.course) } })
+  }
+  if (!course) {
+    course = await prisma.course.findFirst()
+  }
+  if (!course) {
+    return NextResponse.json({ error: 'No course found for resource' }, { status: 400 })
   }
 
-  resourcesDB.push(newResource)
+  // Map type to enum-like value if possible
+  const typeRaw: string | undefined = body.type
+  const typeMap: Record<string, string> = {
+    PDF: 'pdf', VIDEO: 'video', DOC: 'doc', ZIP: 'zip', LINK: 'link', PPT: 'ppt', OTHER: 'other'
+  }
+  const fileType = typeRaw ? (typeMap[typeRaw.toUpperCase()] || 'other') : 'other'
 
-  return NextResponse.json({ resource: newResource })
+  const created = await prisma.resource.create({
+    data: {
+      courseId: course.id,
+      title: body.title,
+      description: body.description ?? '',
+      tags: Array.isArray(body.tags) ? body.tags : [],
+      fileType: fileType as any,
+      url: body.url ?? '',
+      uploadedAt: new Date(),
+      downloads: 0,
+      mimeType: body.mimeType ?? null,
+      size: typeof body.size === 'number' ? body.size : null,
+      provider: body.provider ?? null,
+      storageKey: body.storageKey ?? null,
+      duration: typeof body.duration === 'number' ? body.duration : null,
+    },
+    include: { course: true },
+  })
+
+  const shaped = {
+    id: 1,
+    courseId: 1,
+    course: created.course?.name || '',
+    title: created.title,
+    type: displayType(created.fileType as any),
+    size: formatSize(created.size ?? undefined),
+    uploadedBy: body.uploadedBy ?? 'TBD',
+    uploadDate: created.uploadedAt.toISOString().split('T')[0],
+    downloads: created.downloads ?? 0,
+    url: created.url || '',
+  }
+
+  return NextResponse.json({ resource: shaped })
 }

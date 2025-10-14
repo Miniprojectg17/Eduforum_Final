@@ -1,65 +1,27 @@
-import { NextResponse } from "next/server"
+import { NextResponse } from 'next/server'
+import { prisma } from '../../../lib/prisma' // or '@/lib/prisma' if your alias works
 
-// Mock database - in production, this would be a real database
-const coursesDB = [
-  {
-    id: 1,
-    code: "CS201",
-    name: "Data Structures",
-    instructor: "Prof. Smith",
-    students: 45,
-    progress: 65,
-    nextClass: "Mon, 10:00 AM",
-    description: "Learn fundamental data structures and algorithms",
-  },
-  {
-    id: 2,
-    code: "CS301",
-    name: "Web Development",
-    instructor: "Prof. Johnson",
-    students: 38,
-    progress: 80,
-    nextClass: "Tue, 2:00 PM",
-    description: "Modern web development with React and Next.js",
-  },
-  {
-    id: 3,
-    code: "CS401",
-    name: "Database Systems",
-    instructor: "Prof. Williams",
-    students: 42,
-    progress: 45,
-    nextClass: "Wed, 11:00 AM",
-    description: "Relational and NoSQL database design",
-  },
-  {
-    id: 4,
-    code: "CS302",
-    name: "Algorithms",
-    instructor: "Prof. Davis",
-    students: 35,
-    progress: 55,
-    nextClass: "Thu, 3:00 PM",
-    description: "Advanced algorithm design and analysis",
-  },
-  {
-    id: 5,
-    code: "CS501",
-    name: "Machine Learning",
-    instructor: "Prof. Brown",
-    students: 50,
-    progress: 30,
-    nextClass: "Fri, 1:00 PM",
-    description: "Introduction to ML algorithms and applications",
-  },
-]
+export const runtime = 'nodejs'
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const role = searchParams.get("role")
+export async function GET() {
+  const rows = await prisma.course.findMany()
+  const courses = rows.map((c, i) => ({
+    id: i + 1,
+    code: c.code,
+    name: c.name,
+    instructor: 'TBD',
+    students: 0,
+    progress: 0,
+    nextClass: 'TBD',
+    description: '',
+  }))
+  return NextResponse.json({ courses })
+}
 
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  return NextResponse.json({ courses: coursesDB })
+export async function POST(request: Request) {
+  const body = await request.json()
+  const course = await prisma.course.create({
+    data: { code: body.code, name: body.name },
+  })
+  return NextResponse.json({ course })
 }

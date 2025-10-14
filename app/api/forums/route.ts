@@ -1,99 +1,96 @@
 import { NextResponse } from "next/server"
+import { prisma } from "../../../lib/prisma"
 
-// Mock forum threads database
-const threadsDB = [
-  {
-    id: 1,
-    courseId: 1,
-    course: "Data Structures",
-    title: "How to implement a binary search tree?",
-    content:
-      "I'm working on the assignment for implementing a binary search tree, but I'm confused about how to structure the insert and search methods. Can someone explain the logic and maybe provide a simple example?",
-    author: "John Doe",
-    authorId: "student1",
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    replies: 5,
-    upvotes: 12,
-    hasVerifiedAnswer: true,
-    tags: ["assignments", "trees"],
-  },
-  {
-    id: 2,
-    courseId: 2,
-    course: "Web Development",
-    title: "Best practices for React state management?",
-    content: "What are the current best practices for managing state in large React applications?",
-    author: "Jane Smith",
-    authorId: "student2",
-    timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    replies: 8,
-    upvotes: 20,
-    hasVerifiedAnswer: true,
-    tags: ["doubts", "react"],
-  },
-  {
-    id: 3,
-    courseId: 4,
-    course: "Algorithms",
-    title: "Can someone explain dynamic programming?",
-    content: "I'm struggling to understand the concept of dynamic programming and when to use it.",
-    author: "Mike Johnson",
-    authorId: "student3",
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    replies: 12,
-    upvotes: 35,
-    hasVerifiedAnswer: false,
-    tags: ["doubts", "algorithms"],
-  },
-  {
-    id: 4,
-    courseId: 3,
-    course: "Database Systems",
-    title: "SQL vs NoSQL - When to use which?",
-    content: "What are the key differences and when should I choose one over the other?",
-    author: "Sarah Williams",
-    authorId: "student4",
-    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    replies: 15,
-    upvotes: 28,
-    hasVerifiedAnswer: true,
-    tags: ["resources", "databases"],
-  },
-]
+export const runtime = 'nodejs'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  const courseId = searchParams.get("courseId")
+  const courseIdParam = searchParams.get("courseId")
 
-  await new Promise((resolve) => setTimeout(resolve, 300))
-
-  let filteredThreads = threadsDB
-  if (courseId) {
-    filteredThreads = threadsDB.filter((t) => t.courseId === Number.parseInt(courseId))
+  // Try to filter by course if provided; our Course IDs are strings (cuid),
+  // while frontend may pass numeric IDs from the previous mock. We'll ignore
+  // the filter if it doesn't match any course.
+  let where: any = {}
+  if (courseIdParam) {
+    // Attempt: treat courseIdParam as a course code or internal id
+    // 1) direct id match
+    const courseById = await prisma.course.findFirst({ where: { id: courseIdParam } })
+    // 2) or code match if numeric was actually a code-like string
+    const courseByCode = courseById ? null : await prisma.course.findFirst({ where: { code: courseIdParam } })
+    const course = courseById || courseByCode
+    if (course) where = { courseId: course.id }
   }
 
-  return NextResponse.json({ threads: filteredThreads })
+  const threads = await prisma.thread.findMany({
+    where,
+    include: { replies: true, course: true },
+    orderBy: { timestamp: 'desc' },
+  })
+
+  const shaped = threads.map((t, i) => ({
+    id: i + 1,
+    courseId: i + 1, // numeric placeholder for UI compatibility
+    course: t.course?.name || '',
+    title: t.title,
+    content: t.content || '',
+    author: t.author,
+    authorId: '',
+    timestamp: t.timestamp.toISOString(),
+    replies: t.replies.length,
+    upvotes: 0,
+    hasVerifiedAnswer: Boolean(t.verifiedAnswerId),
+    tags: [],
+  }))
+
+  return NextResponse.json({ threads: shaped })
 }
 
 export async function POST(request: Request) {
   const body = await request.json()
 
-  const newThread = {
-    id: threadsDB.length + 1,
-    courseId: body.courseId,
-    course: body.course,
-    title: body.title,
-    content: body.content,
-    author: body.author,
-    authorId: body.authorId,
-    timestamp: new Date().toISOString(),
-    replies: 0,
+  // Find a matching course by direct id or by code or name
+  let course = null as null | { id: string }
+  if (body.courseId) {
+    course = await prisma.course.findFirst({ where: { id: String(body.courseId) } })
+  }
+  if (!course && body.code) {
+    course = await prisma.course.findFirst({ where: { code: String(body.code) } })
+  }
+  if (!course && body.course) {
+    course = await prisma.course.findFirst({ where: { name: String(body.course) } })
+  }
+  if (!course) {
+    // fallback: pick any course to satisfy FK
+    course = await prisma.course.findFirst()
+  }
+  if (!course) {
+    return NextResponse.json({ error: 'No course available for thread' }, { status: 400 })
+  }
+
+  const created = await prisma.thread.create({
+    data: {
+      title: body.title,
+      content: body.content ?? '',
+      author: body.author ?? 'Anonymous',
+      courseId: course.id,
+    },
+    include: { course: true, replies: true },
+  })
+
+  const shaped = {
+    id: 1,
+    courseId: 1,
+    course: created.course?.name || '',
+    title: created.title,
+    content: created.content || '',
+    author: created.author,
+    authorId: body.authorId ?? '',
+    timestamp: created.timestamp.toISOString(),
+    replies: created.replies.length,
     upvotes: 0,
-    hasVerifiedAnswer: false,
+    hasVerifiedAnswer: Boolean(created.verifiedAnswerId),
     tags: body.tags || [],
   }
 
-  threadsDB.push(newThread)
-
-  return NextResponse.json({ thread: newThread })
+  return NextResponse.json({ thread: shaped })
 }

@@ -35,15 +35,21 @@ export function LoginForm() {
       return
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 800))
-
-    const user = {
-      email: facultyEmail,
-      role: "faculty",
-      name: facultyEmail.split("@")[0],
+    try {
+      const res = await fetch(`/api/profile/faculty?email=${encodeURIComponent(email)}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "Account not found")
+      // Persist user for pages that rely on localStorage
+      localStorage.setItem(
+        "user",
+        JSON.stringify({ role: "faculty", email, name: data?.profile?.name || email.split("@")[0] }),
+      )
+      router.push("/faculty/dashboard")
+    } catch (err: any) {
+      setError(err.message || "Unable to sign in")
+    } finally {
+      setIsLoading(false)
     }
-    localStorage.setItem("user", JSON.stringify(user))
-    router.push("/faculty/dashboard")
   }
 
   const handleStudentLogin = async (e: React.FormEvent) => {
@@ -64,16 +70,24 @@ export function LoginForm() {
       return
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 800))
-
-    const user = {
-      prn,
-      email: studentEmail,
-      role: "student",
-      name: `Student ${prn}`,
+    try {
+      const res = await fetch(`/api/profile/student?email=${encodeURIComponent(email)}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "Account not found")
+      // Optionally, validate PRN matches the stored record
+      if (data?.profile?.prn && data.profile.prn !== prn) {
+        throw new Error("PRN does not match our records")
+      }
+      localStorage.setItem(
+        "user",
+        JSON.stringify({ role: "student", email, prn, name: data?.profile?.name || `Student ${prn}` }),
+      )
+      router.push("/student/dashboard")
+    } catch (err: any) {
+      setError(err.message || "Unable to sign in")
+    } finally {
+      setIsLoading(false)
     }
-    localStorage.setItem("user", JSON.stringify(user))
-    router.push("/student/dashboard")
   }
 
   return (

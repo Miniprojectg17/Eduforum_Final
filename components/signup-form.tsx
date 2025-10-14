@@ -13,13 +13,18 @@ import { AlertCircle } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export function SignUpForm() {
+  const [facultyName, setFacultyName] = useState("")
   const [facultyEmail, setFacultyEmail] = useState("")
+  const [facultyDepartment, setFacultyDepartment] = useState("")
+  const [facultyDesignation, setFacultyDesignation] = useState("")
   const [facultyPassword, setFacultyPassword] = useState("")
   const [facultyConfirmPassword, setFacultyConfirmPassword] = useState("")
 
   const [studentName, setStudentName] = useState("")
   const [studentEmail, setStudentEmail] = useState("")
   const [studentPrn, setStudentPrn] = useState("")
+  const [studentDepartment, setStudentDepartment] = useState("")
+  const [studentYear, setStudentYear] = useState("")
   const [studentPassword, setStudentPassword] = useState("")
   const [studentConfirmPassword, setStudentConfirmPassword] = useState("")
 
@@ -49,16 +54,43 @@ export function SignUpForm() {
       return
     }
 
-    setIsLoading(true)
-    await new Promise((resolve) => setTimeout(resolve, 800))
-
-    const user = {
-      email: facultyEmail,
-      role: "faculty",
-      name: facultyEmail.split("@")[0],
+    // Validate required faculty fields
+    if (!facultyName || !facultyDepartment || !facultyDesignation) {
+      setError("Please fill all required fields")
+      return
     }
-    localStorage.setItem("user", JSON.stringify(user))
-    router.push("/faculty/dashboard")
+
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/profile/faculty", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: facultyName,
+          email: facultyEmail,
+          department: facultyDepartment,
+          designation: facultyDesignation,
+          password: facultyPassword,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to create profile")
+      }
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          role: "faculty",
+          email: facultyEmail,
+          name: facultyName,
+        }),
+      )
+      router.push("/faculty/dashboard")
+    } catch (err: any) {
+      setError(err.message || "Something went wrong")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleStudentSignUp = async (e: React.FormEvent) => {
@@ -89,17 +121,45 @@ export function SignUpForm() {
       return
     }
 
-    setIsLoading(true)
-    await new Promise((resolve) => setTimeout(resolve, 800))
-
-    const user = {
-      name: studentName,
-      email: studentEmail,
-      prn: studentPrn,
-      role: "student",
+    // Validate required student fields
+    if (!studentDepartment || !studentYear) {
+      setError("Please fill all required fields")
+      return
     }
-    localStorage.setItem("user", JSON.stringify(user))
-    router.push("/student/dashboard")
+
+    setIsLoading(true)
+    try {
+      const res = await fetch("/api/profile/student", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: studentName,
+          email: studentEmail,
+          prn: studentPrn,
+          department: studentDepartment,
+          year: studentYear,
+          password: studentPassword,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to create profile")
+      }
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          role: "student",
+          email: studentEmail,
+          prn: studentPrn,
+          name: studentName,
+        }),
+      )
+      router.push("/student/dashboard")
+    } catch (err: any) {
+      setError(err.message || "Something went wrong")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -163,6 +223,30 @@ export function SignUpForm() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="student-department">Department</Label>
+                  <Input
+                    id="student-department"
+                    type="text"
+                    placeholder="e.g. Computer Science"
+                    value={studentDepartment}
+                    onChange={(e) => setStudentDepartment(e.target.value)}
+                    required
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="student-year">Year</Label>
+                  <Input
+                    id="student-year"
+                    type="text"
+                    placeholder="e.g. First, Second, Third, Final"
+                    value={studentYear}
+                    onChange={(e) => setStudentYear(e.target.value)}
+                    required
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="student-password-signup">Create Password</Label>
                   <Input
                     id="student-password-signup"
@@ -199,6 +283,18 @@ export function SignUpForm() {
             <TabsContent value="faculty">
               <form onSubmit={handleFacultySignUp} className="space-y-4">
                 <div className="space-y-2">
+                  <Label htmlFor="faculty-name">Full Name</Label>
+                  <Input
+                    id="faculty-name"
+                    type="text"
+                    placeholder="Enter your full name"
+                    value={facultyName}
+                    onChange={(e) => setFacultyName(e.target.value)}
+                    required
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="faculty-email-signup">Email</Label>
                   <Input
                     id="faculty-email-signup"
@@ -206,6 +302,30 @@ export function SignUpForm() {
                     placeholder="faculty@kitcoek.in"
                     value={facultyEmail}
                     onChange={(e) => setFacultyEmail(e.target.value)}
+                    required
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="faculty-department">Department</Label>
+                  <Input
+                    id="faculty-department"
+                    type="text"
+                    placeholder="e.g. Computer Science"
+                    value={facultyDepartment}
+                    onChange={(e) => setFacultyDepartment(e.target.value)}
+                    required
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="faculty-designation">Designation</Label>
+                  <Input
+                    id="faculty-designation"
+                    type="text"
+                    placeholder="e.g. Assistant Professor"
+                    value={facultyDesignation}
+                    onChange={(e) => setFacultyDesignation(e.target.value)}
                     required
                     className="h-11"
                   />

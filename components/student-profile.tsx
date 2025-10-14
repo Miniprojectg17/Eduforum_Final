@@ -31,9 +31,13 @@ export function StudentProfile() {
     setUser(parsedUser)
   }, [router])
 
-  const { data, isLoading, mutate } = useSWR<{ profile: any; courses: any[] }>("/api/profile/student", fetcher, {
-    refreshInterval: 5000,
-  })
+  const { data, isLoading, mutate } = useSWR<{ profile: any; courses: any[] }>(
+    user?.email ? `/api/profile/student?email=${encodeURIComponent(user.email)}` : null,
+    fetcher,
+    {
+      refreshInterval: 5000,
+    },
+  )
   const { data: activity } = useSWR<{ activity: { posts: number; replies: number; upvotes: number } }>(
     "/api/forums/activity",
     fetcher,
@@ -66,7 +70,7 @@ export function StudentProfile() {
   const { profile, courses } = data
 
   async function handleSave() {
-    const res = await fetch("/api/profile/student", {
+    const res = await fetch(`/api/profile/student?email=${encodeURIComponent(user.email)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contact, avatarUrl }),
